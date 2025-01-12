@@ -1,0 +1,158 @@
+import numpy as np
+import scipy.fft
+import matplotlib.pyplot as plt
+import pyqtgraph as pg
+
+# defining the wave
+#number of sample points
+N=1600
+##sample spacing
+T=1.0/1600
+
+x=np.linspace(0.0, N*T, N,endpoint=False)
+# x = np.arange(0, 1, 0.001)
+y1 = 2 * np.sin((x * 10*2*np.pi) + (np.pi/6))
+y2 = 3 * np.sin((x * 50*2*np.pi)+ (np.pi/3))
+y = y1 + y2+3
+# plt.plot(y)
+
+def amplitude_spectrum(data,x):
+    #Extract amplitudes of frequency components (amplitude spectrum)==========
+    data_points = np.size(data)
+    length = np.size(data)
+    length=data[-1]/data_points
+    # computind fourier transform---------------------------------------------
+    fourier_transformed = scipy.fft.fft(data)
+    #computing sample frequencies---------------------------------------------
+    freq = np.fft.fftfreq(data_points, d=x[1]-x[0]) # d is the time step or sample spacing
+    #scaling frequencies
+    # freq = (freq * data_points) / 2 
+    #computing amplitudes-----------------------------------------------------
+    amplitude = np.abs(fourier_transformed) 
+    #scaling amplitudes
+    amplitude = (amplitude * 2) / data_points 
+    #sorting indexes
+    amplitude = np.reshape(amplitude, (np.shape(amplitude)[0], 1))
+    freq = freq.reshape(np.shape(freq)[0],1)
+    fp = np.concatenate((freq, amplitude), axis = 1)
+    fp = fp[np.argsort(fp[:,0])]
+    amplitude = fp[:,1]
+    freq = fp[:,0]
+
+    return amplitude, freq
+
+def phase_spectrum(data,x, ignore, tr_order):
+    # Extract phases of frequency components (phase spectrum)=================
+    data_points = np.size(data)
+    length = np.size(data)
+    # computind fourier transform---------------------------------------------
+    fourier_transformed = scipy.fft.fft(data)
+    #computing sample frequencies---------------------------------------------
+    freq = np.fft.fftfreq(data_points, d=x[1]-x[0])
+    #scaling frequencies
+    # freq = (freq * data_points) / 2
+    #detect noise (very small numbers (eps)) and ignore them------------------
+    # #tolerance threshold
+    if ignore == True:
+        threshold = np.max(np.abs(fourier_transformed)) / tr_order
+        #maskout values that are below the threshold
+        fourier_transformed[np.abs(fourier_transformed) < threshold] = 0 
+    #seperate real and imaginary parts of fft---------------------------------
+    real = fourier_transformed.real
+    imaginary = fourier_transformed.imag
+    phase = np.arctan2(imaginary,real)
+    #sorting indexes
+    phase = np.reshape(phase, (np.shape(phase)[0],1))
+    freq = freq.reshape(np.shape(freq)[0],1)
+    fp = np.concatenate((freq, phase), axis = 1)
+    fp = fp[np.argsort(fp[:, 0])]
+    phase = fp[:,1]
+    freq = fp[:,0]
+
+    return phase, freq
+
+def ft_reconstruct(frequencies, amplitudes, phases):
+    len_sample = np.size(frequencies)
+    t = 0
+    reconstruct = []
+    while t < len_sample:
+        b = []
+        j = 0
+        while j < len_sample:
+            a = amplitudes[j] * np.cos(2*np.pi * frequencies[j] * t + (phases[j]))
+            b.append(a)
+            j = j + 1
+        reconstruct.append(np.sum(b))
+        t = t + 1
+    reconstruct = np.asarray(reconstruct)
+    reconstruct = (reconstruct/2)
+    return reconstruct
+
+#-----------------------------------------------------------------------------
+# Spectrum extraction
+amplitudes, frequencies = amplitude_spectrum(y,x)
+phases, frequencies = phase_spectrum(y,x, True, 10000)
+
+rebuild=ft_reconstruct(frequencies,amplitudes,phases)
+
+positive_freq_indices = np.where(frequencies >= 0)
+ampli_posi=amplitudes[positive_freq_indices]
+freq_posi = frequencies[positive_freq_indices]
+phase_posi = phases[positive_freq_indices]
+phase_posi_ang=phase_posi*180/np.pi #turn from radian to angle
+
+# plot
+# fig,a =  plt.subplots(3,sharex=False)
+# a[0].plot(freq_posi, ampli_posi)
+# a[1].plot(freq_posi, phase_posi_ang)
+# a[2].plot(x, y)
+# a[0].set_xlabel("Frequency")
+# a[0].set_ylabel("Amplitude")
+# a[0].grid()
+# a[1].set_xlabel("Frequency")
+# a[1].set_ylabel("Phase")
+# a[1].grid()
+# a[2].set_xlabel("x")
+# a[2].set_ylabel("y")
+# a[2].grid()
+# # plt.grid()
+
+# rebuild and show
+
+# # a[3].plot(x, rebuild)
+# # a[3].set_xlabel("x")
+# # a[3].set_ylabel("y-rebuild")
+# # # a[2].grid()
+# # a[3].legend()
+# plt.show()
+
+# PyQtGraph plot setup
+app = pg.mkQApp("Plotting Example")
+win = pg.GraphicsLayoutWidget(show=True, title="Basic plotting examples")
+win.resize(800,400)
+win.setWindowTitle('pyqtgraph example: Plotting')
+# Enable antialiasing for prettier plots
+pg.setConfigOptions(antialias=True)
+
+p1 = win.addPlot(title="Original curve")
+p1.plot(x, y, pen='r')
+p1.plot(x, rebuild, pen='b')
+p1.setLabel('left', 'amplitude', 'mm')
+p1.setLabel('bottom', 'time', 's')
+p1.showGrid(x=True, y=True)
+
+p2 = win.addPlot(title="Phase spectrum",row=1, col=0)
+p2.plot(freq_posi, phase_posi_ang, pen='r')
+p2.setLabel('left', 'Phase', 'degrees')
+p2.setLabel('bottom', 'Frequency', 'Hz')
+p2.showGrid(x=True, y=True)
+
+p3 = win.addPlot(title="magnitude spectrum",row=2, col=0)
+p3.plot(freq_posi, ampli_posi, pen='r')
+p3.setLabel('left', 'magnitude', 'mm')
+p3.setLabel('bottom', 'Frequency', 'Hz')
+p3.showGrid(x=True, y=True)
+
+# Run the application
+if __name__ == '__main__':
+    pg.exec()
